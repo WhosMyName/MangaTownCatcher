@@ -71,17 +71,21 @@ def init_preps():
 
     get_file(indexfile, inputurl)
     with open(indexfile, "r") as inde:
+        print("opened file")
         for line in inde:
             line = str(line)
             inchapter = False
             chapterurl = ""
-            if "chapter_points" in line:
+            if "chapter_content" in line:
                 inchapter = True
+                print("true")
             if "<a href=" in line and inchapter:
                 chapterurl = line.split("\"//")[1].split("\">")[0]
             if "Vol" in line and inchapter:
-                volume = line.split("> <")[0]#.split("VOl ")[1].split("<")[0]#int cast
+                print(line)
+                volume = line.split("> <")[0]#.split("Vol ")[1].split("<")[0]#int cast
                 print("Volume:", volume)
+                print("exiting")
                 exit(0)
                 voldir = mangadir + "Volume " + volume + SLASH
                 chapterlist.append(volume, chapterurl, voldir)
