@@ -3,6 +3,7 @@
 import os
 import time
 import requests
+import re
 from cbzarchiver import makecbz
 
 #SEARCH FOR # TO FIND ALL COMMENTS
@@ -22,7 +23,7 @@ def get_file(srcfile, srcurl, counter=0, ftype=0):#ftype indicates if picture or
         return 1
     counter = counter + 1
     if not os.path.isfile(srcfile):
-        time.sleep(1) # why wait 5 secs? because it'll make you "look" like neither a bot/script nor like a reading human 
+        time.sleep(5) # why wait 5 secs? because it'll make you "look" like neither a bot/script nor like a reading human 
         print("Downloading", srcurl, "as", srcfile)
         with open(srcfile, "wb") as fifo:#open in binary write mode
             response = requests.get(srcurl, headers=HEADERS)#get request
@@ -70,27 +71,28 @@ def init_preps():
         os.mkdir(mangadir)
 
     get_file(indexfile, inputurl)
+
+    regex = re.compile(r"c\d+")
+
     with open(indexfile, "r") as inde:
         print("opened file")
+        inchapter = False
         for line in inde:
             line = str(line)
-            inchapter = False
             chapterurl = ""
             if "chapter_content" in line:
                 inchapter = True
-                print("true")
+                print("true", inchapter)
             if "<a href=" in line and inchapter:
-                chapterurl = line.split("\"//")[1].split("\">")[0]
-            if "Vol" in line and inchapter:
-                print(line)
-                volume = line.split("> <")[0]#.split("Vol ")[1].split("<")[0]#int cast
-                print("Volume:", volume)
-                print("exiting")
-                exit(0)
-                voldir = mangadir + "Volume " + volume + SLASH
-                chapterlist.append(volume, chapterurl, voldir)
-            if "comment_content" in line:
+                print("foundlink")
+                chapterurl = "http://" + line.split("\"//")[1].split("\">")[0]
+                chapter = int(regex.findall(chapterurl)[0].split("c")[1].split("/")[0])
+                print("Chapter", chapter, ":\t", chapterurl)
+                chapterdir = mangadir + "Chapter " + str(chapter) + SLASH
+                chapterlist.append([chapter, chapterurl, chapterdir])
+            if "comment_content" in line and inchapter:
                 inchapter = False
+                print("eof")
 
     autocleanse(indexfile)
     chapterlist.reverse()
@@ -98,43 +100,35 @@ def init_preps():
         if chapter[0] >= firstchapter and chapter[0] <= lastchapter:
             if not os.path.exists(chapter[2]):
                 os.mkdir(chapter[2])
-            print("Url:", volume[1])
-            print("Voldir:", chapter[2])
-            retrieve_chapter(volume[1], chapter[2])
-            makecbz(chapter[2])
+            print("Url:", chapter[1])
+            print("Chapterdir:", chapter[2])
+            retrieve_chapter(chapter[1], chapter[2])
+            print("making dat shit cbz")
+    makecbz(mangadir)
     exit(0)
 
-def retrieve_chapter(chapterlist, voldir):
+def retrieve_chapter(chapterurl, chapterdir):
     """ Function to download Volumes"""
-    chapterlist.reverse()
-    for chapter in chapterlist:
-        chapterdir = voldir + "Chapter " + str(chapter[1]) + SLASH
-        if not os.path.exists(chapterdir):
-                os.mkdir(chapterdir)
-        chapterfile = chapterdir + str(chapter[1]) + ".html"
-        get_file(chapterfile,chapter[0])
-        maxpages = 0
-        with open(chapterfile, "r") as chap:
-            for line in chap:
-                line = str(line)
-                if "<option value=\"" in line:
-                    options = line.split("\">")
-                    for option in options:
-                        option = option.split("</")[0]
-                        if not "Comments" in option and not "selected" in option and not "option" in option:
-                            option = int(option)
-                            if option > maxpages:
-                                maxpages = option
-        print("Maxpages:", maxpages)
-        #autocleanse(chapterfile) # uncomment
-        srcurl = chapter[0].split("1.html")[0]
-        for x in range(1, maxpages + 1):
-            pageurl = srcurl + str(x) + ".html"
-            pagefile = chapterdir + str(x) + ".html"
-            retval = retrieve_page(pageurl, pagefile, chapterdir, str(x))
-            print("retval for page", x, "is:", retval)
-            pageurl = ""
-            pagefile = ""
+
+    chapterfile = chapterdir + "chapter.html"
+    get_file(chapterfile, chapterurl)
+    maxpages = 0
+    with open(chapterfile, "r") as chap:
+        for line in chap:
+            line = str(line)
+            if "<option value=\"" in line and not "Featured" in line:
+                option = int(line.split("\">")[1].split("<")[0])
+                if option > maxpages:
+                    maxpages = option
+    print("Maxpages:", maxpages)
+    autocleanse(chapterfile) # uncomment
+    for x in range(1, maxpages + 1):
+        pageurl = chapterurl + str(x) + ".html"
+        pagefile = chapterdir + str(x) + ".html"
+        retval = retrieve_page(pageurl, pagefile, chapterdir, str(x))
+        print("retval for page", x, "is:", retval)
+        pageurl = ""
+        pagefile = ""
     return 0
 
 def retrieve_page(pageurl, pagefile, chapterdir, itera):
@@ -146,8 +140,8 @@ def retrieve_page(pageurl, pagefile, chapterdir, itera):
         for line in pgf:
             if "read_img" in line:
                 imgbool = True
-            if "<img src=\"" in line and "id=\"image\" alt=\"" in line and imgbool:
-                imgurl = line.split("\"")[1]
+            if "<img src=\"" in line and "id=\"image\"" in line and imgbool:
+                imgurl = line.split("src=\"")[1].split("\" ")[0]
                 print(imgurl)
                 imgfile = chapterdir + "Page " + str(itera) + ".jpg"
                 retval = get_file(imgfile, imgurl, 0, 1)
